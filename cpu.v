@@ -38,7 +38,7 @@ module cpu_top #(
         input debug,
         output reg [31:0] led
 );
-
+    parameter NOP=32'h0;
 //pipeline register
     // =====pipeline data
     reg [31:0] IFID_IR; // pipeline ir
@@ -58,8 +58,14 @@ module cpu_top #(
             MEMWB_pc<=0;
         end
         else begin
+            if(instrution_flush) begin
+                IFID_IR<=NOP;
+            end
+            else begin
+                if(IFID_we)
+                    IFID_IR<=src_IR;
+            end
             if(IFID_we) begin
-                IFID_IR<=src_IR;
                 IFID_pc<=pc;
             end
             IDEX_pc<=IFID_pc;
@@ -207,18 +213,17 @@ module cpu_top #(
 
 
 //========== hazard
-    wire control_flush,pc_we,IFID_we;
+    wire control_flush,instrution_flush,pc_we,IFID_we;
     hazard_detection hazard_u0(
-        .src_IR(src_IR),
         .rs1(IR[19:15]),//in IFID
         .rs2(IR[24:20]),//in IFID
         .IDEX_rd(IDEX_rd),
         .IDEX_MemRead(IDEX_MemRead),
         .Branch(Branch),
         .is_jump(is_jump),
-        .EXMEM_Branch(EXMEM_Branch), 
-        .EXMEM_is_jump(EXMEM_is_jump),
+        .condition(condition),
         .control_flush(control_flush),
+        .instrution_flush(instrution_flush),
         .pc_we(pc_we),
         .IFID_we(IFID_we)
     );
@@ -229,9 +234,17 @@ module cpu_top #(
     
     assign CTL={18'h0, ALUf, RegWriteSrc,is_jalr,is_jump,ALUSrc_a, Branch,MemRead,MemtoReg, MemWrite,ALUSrc,RegWrite};
 
-
+    reg [31:0] npc_pc_src;
+    always@(*) begin
+        if(is_jalr)
+            npc_pc_src=temp_a;
+        else if(is_jump|(Branch&condition))
+            npc_pc_src=IDEX_pc;
+        else
+            npc_pc_src=pc;
+    end
     npc npc_u0(
-        .pc(is_jalr?temp_a:pc),//it can be x[rs1]
+        .pc(npc_pc_src),//it can be x[rs1]
         .is_jump(is_jump|(Branch&condition)),
         .is_jalr(is_jalr),
         .imm(IMM),
