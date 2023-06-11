@@ -1,6 +1,6 @@
 module bram #(
     parameter DATA_WIDTH = 32,
-    ADDR_WIDTH = 8,
+    ADDR_WIDTH = 10,
     INIT_FILE = ""
 )(
     input clk, // Clock
