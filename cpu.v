@@ -1,0 +1,442 @@
+module cpu_top #(
+    parameter WORD_WIDTH = 32,     //字长
+    parameter ADDR_WIDTH = 32      //地址宽度
+)(
+        input clk,
+        input rstn,
+        output [31:0] pc_chk, //用于SDU进行断点检查，在单周期cpu中，pc_chk = pc
+        output [31:0] npc,    //next_pc
+        output reg [31:0] pc,
+        output [31:0] IR,     //当前指令
+        output [31:0] IMM,    //立即数
+        output [31:0] CTL,    //控制信号，你可以将所有控制信号集成一根bus输出
+        output reg [31:0] A,      //ALU的输入A
+        output [31:0] B,      //ALU的输入B
+        output [31:0] Y,      //ALU的输出
+        output [31:0] MDR,    //数据存储器的输出
+    /*
+        addr是SDU输出给cpu的地址，
+        cpu根据这个地址从ins_mem/reg_file/data_mem中读取数据，三者共用一个地址！
+        注意，这个地址是你在串口输入的地址，不需要进行任何处理，直接接入cpu中的对应模块即可
+        dout_rf 是从reg_file中读取的addr地址的数据
+        dout_dm 是从data_mem中读取的addr地址的数据
+        dout_im 是从ins_mem中读取的addr地址的数据
+        din 是SDU输出给cpu的数据，cpu需要将这个数据写入到addr地址对应的存储器中
+        we_dm 是数据存储器写使能信号，当we_dm为1时，cpu将din中的数据写入到addr地址对应的存储器中
+        we_im 是指令存储器写使能信号，当we_im为1时，cpu将din中的数据写入到addr地址对应的存储器中
+        clk_ld 是SDU输出的用于调试时写入ins_mem/data_mem的时钟，要跟clk_cpu区分开，这两个clk同时只会有一个在工作
+        debug 是调试信号，当debug为1时，cpu的ins_mem和data_mem应使用clk_ld时钟，否则使用clk时钟
+        */
+        input [31:0] addr,   
+        output [31:0] dout_rf,
+        output [31:0] dout_dm,
+        output [31:0] dout_im,
+        input [31:0] din,
+        input we_dm,
+        input we_im,
+        input clk_ld,
+        input debug,
+        output reg [31:0] led
+);
+
+//pipeline register
+    // =====pipeline data
+    reg [31:0] IFID_IR; // pipeline ir
+    reg [31:0] IFID_pc, IDEX_pc,EXMEM_pc,MEMWB_pc;//pipeline pc
+    reg [31:0] IDEX_temp_a, IDEX_temp_b,IDEX_IMM,EXMEM_Y;//pipeline alu
+    reg [2:0] IDEX_funct3;
+    reg [4:0] IDEX_rs1, IDEX_rs2, IDEX_rd, EXMEM_rd, MEMWB_rd;//pipeline reg_addr
+    reg [31:0] EXMEM_wdata;
+    reg [31:0] MEMWB_Y, MEMWB_MDR;//pipeline wback result
+
+    always@(posedge clk) begin
+        if(!rstn) begin
+            IFID_IR<=0;
+            IFID_pc<=0;
+            IDEX_pc<=0;
+            EXMEM_pc<=0;
+            MEMWB_pc<=0;
+        end
+        else begin
+            if(IFID_we) begin
+                IFID_IR<=src_IR;
+                IFID_pc<=pc;
+            end
+            IDEX_pc<=IFID_pc;
+            EXMEM_pc<=IDEX_pc;
+            MEMWB_pc<=EXMEM_pc;
+        end
+    end//*done
+
+    always@(posedge clk) begin
+        IDEX_temp_a<=src_temp_a;
+        IDEX_temp_b<=src_temp_b;
+        IDEX_IMM<=src_IMM;
+        EXMEM_Y<=src_Y;
+        
+    end//*done
+
+    always@(posedge clk) begin
+        IDEX_funct3<=IFID_IR[14:12];
+        IDEX_rs1<=IFID_IR[19:15];
+        IDEX_rs2<=IFID_IR[24:20];
+        IDEX_rd<=IFID_IR[11:7];
+        EXMEM_rd<=IDEX_rd;
+        MEMWB_rd<=EXMEM_rd;
+    end//*done
+
+    always@(posedge clk) begin
+        EXMEM_wdata<=temp_b;
+        MEMWB_Y<=EXMEM_Y;
+        MEMWB_MDR<=src_MDR;
+    end//*done
+
+
+
+    // =====pipeline_ctrl //*done
+    //IDEX: 
+    reg IDEX_MemRead,IDEX_MemtoReg,IDEX_MemWrite,IDEX_ALUSrc,IDEX_RegWrite,IDEX_RegWriteSrc;
+    //RegWriteSrc=1:pc+4
+    reg IDEX_Branch,IDEX_is_jalr,IDEX_is_jump;
+    reg [1:0] IDEX_ALUSrc_a;//00:reg  01:0  10:pc  
+    reg [2:0] IDEX_ALUf; 
+    //EXMEM: eliminate is_jalr,is_jump,Branch(for npc)
+    reg EXMEM_MemRead,EXMEM_MemtoReg,EXMEM_MemWrite,EXMEM_RegWrite,EXMEM_RegWriteSrc;//RegWriteSrc=1:pc+4
+    reg EXMEM_Branch, EXMEM_is_jump;//for Branch hazard
+    //MEMWB: 
+    reg MEMWB_MemtoReg,MEMWB_RegWrite,MEMWB_RegWriteSrc;//RegWriteSrc=1:pc+4
+
+    // =====pipeline_ctrl_assignment
+    //IDEX:
+    wire src_MemRead,src_MemtoReg,src_MemWrite,src_ALUSrc,src_RegWrite,src_RegWriteSrc;
+    wire src_Branch,src_is_jalr,src_is_jump;
+    //RegWriteSrc=1:pc+4
+    wire [1:0] src_ALUSrc_a;//00:reg  01:0  10:pc 
+    wire [2:0] src_ALUf; 
+    always@(posedge clk) begin
+        if(!rstn) begin
+            IDEX_MemRead<=0;
+            IDEX_MemtoReg<=0;
+            IDEX_MemWrite<=0;
+            IDEX_ALUSrc<=0;
+            IDEX_RegWrite<=0;
+            IDEX_RegWriteSrc<=0;
+            IDEX_ALUSrc_a<=0;
+            IDEX_ALUf<=2;
+            IDEX_Branch<=0;
+            IDEX_is_jalr<=0;
+            IDEX_is_jump<=0;
+        end
+        else begin
+            if(control_flush) begin
+                IDEX_MemRead<=0;
+                IDEX_MemtoReg<=0;
+                IDEX_MemWrite<=0;
+                IDEX_ALUSrc<=0;
+                IDEX_RegWrite<=0;
+                IDEX_RegWriteSrc<=0;
+                IDEX_ALUSrc_a<=0;
+                IDEX_ALUf<=2;
+                IDEX_Branch<=0;
+                IDEX_is_jalr<=0;
+                IDEX_is_jump<=0;
+
+            end
+            else begin
+                IDEX_MemRead<=src_MemRead;
+                IDEX_MemtoReg<=src_MemtoReg;
+                IDEX_MemWrite<=src_MemWrite;
+                IDEX_ALUSrc<=src_ALUSrc;
+                IDEX_RegWrite<=src_RegWrite;
+                IDEX_RegWriteSrc<=src_RegWriteSrc;
+                IDEX_ALUSrc_a<=src_ALUSrc_a;
+                IDEX_ALUf<=src_ALUf;
+                IDEX_Branch<=src_Branch;
+                IDEX_is_jalr<=src_is_jalr;
+                IDEX_is_jump<=src_is_jump;
+            end
+        end
+    end//*done
+
+    always@(posedge clk) begin
+        if(!rstn) begin
+            EXMEM_MemRead<=0;
+            EXMEM_MemtoReg<=0;
+            EXMEM_MemWrite<=0;
+            EXMEM_RegWrite<=0;
+            EXMEM_RegWriteSrc<=0;
+            EXMEM_Branch<=0;
+            EXMEM_is_jump<=0;
+        end
+        else begin
+            EXMEM_MemRead<=IDEX_MemRead;
+            EXMEM_MemtoReg<=IDEX_MemtoReg;
+            EXMEM_MemWrite<=IDEX_MemWrite;
+            EXMEM_RegWrite<=IDEX_RegWrite;
+            EXMEM_RegWriteSrc<=IDEX_RegWriteSrc;
+            EXMEM_Branch<=IDEX_Branch;
+            EXMEM_is_jump<=IDEX_is_jump;
+        end
+    end//*done
+
+    always@(posedge clk) begin
+        if(!rstn) begin
+            MEMWB_MemtoReg<=0;
+            MEMWB_RegWrite<=0;
+            MEMWB_RegWriteSrc<=0;
+        end
+        else begin
+            MEMWB_MemtoReg<=EXMEM_MemtoReg;
+            MEMWB_RegWrite<=EXMEM_RegWrite;
+            MEMWB_RegWriteSrc<=EXMEM_RegWriteSrc;
+        end
+    end//*done
+
+//========== forwarding
+    wire [1:0] afwd,bfwd;
+    forwarding_unit fwd_u0(
+        .IDEX_rs1(IDEX_rs1),
+        .IDEX_rs2(IDEX_rs2),
+        .EXMEM_rd(EXMEM_rd),
+        .MEMWB_rd(MEMWB_rd),
+        .EXMEM_RegWrite(EXMEM_RegWrite),
+        .MEMWB_RegWrite(MEMWB_RegWrite),
+        .afwd(afwd),
+        .bfwd(bfwd)
+    );
+
+
+//========== hazard
+    wire control_flush,pc_we,IFID_we;
+    hazard_detection hazard_u0(
+        .src_IR(src_IR),
+        .rs1(IR[19:15]),//in IFID
+        .rs2(IR[24:20]),//in IFID
+        .IDEX_rd(IDEX_rd),
+        .IDEX_MemRead(IDEX_MemRead),
+        .Branch(Branch),
+        .is_jump(is_jump),
+        .EXMEM_Branch(EXMEM_Branch), 
+        .EXMEM_is_jump(EXMEM_is_jump),
+        .control_flush(control_flush),
+        .pc_we(pc_we),
+        .IFID_we(IFID_we)
+    );
+
+//========== stage1
+//========== ctrl
+    wire [31:0] src_IR;
+    
+    assign CTL={18'h0, ALUf, RegWriteSrc,is_jalr,is_jump,ALUSrc_a, Branch,MemRead,MemtoReg, MemWrite,ALUSrc,RegWrite};
+
+
+    npc npc_u0(
+        .pc(is_jalr?temp_a:pc),//it can be x[rs1]
+        .is_jump(is_jump|(Branch&condition)),
+        .is_jalr(is_jalr),
+        .imm(IMM),
+        .npc(npc)
+    ); 
+
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            pc<=0;
+        else if(pc_we)
+            pc<=npc;
+    end
+
+    assign pc_chk=pc;//在单周期cpu中，pc_chk = pc
+
+/*
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            pc_chk<=0;
+        else
+            pc_chk<=pc_chk+1;
+    end*/
+    wire mem_clk;
+    assign mem_clk=debug?clk_ld:clk;
+    //pc>>2
+    //not debug input:pc,IR
+    //debug input:debug,addr,din,clk_ld,we_im,dout_im
+    dist_mem_gen_inst ir(
+        .a(debug?addr[9:0]:pc[11:2]),        // input wire [9 : 0] a
+        .d(din),        // input wire [31 : 0] d
+        .dpra(addr[9:0]),  // input wire [9 : 0] dpra
+        .clk(mem_clk),    // input wire clk
+        .we(debug&we_im),      // input wire we
+        .spo(src_IR),    // output wire [31 : 0] spo
+        .dpo(dout_im)    // output wire [31 : 0] dpo
+    );//read-only //*done
+
+//========== stage2(&stage5)
+    assign IR=IFID_IR;
+
+    wire MemtoReg,RegWrite,RegWriteSrc;
+    assign MemtoReg=MEMWB_MemtoReg;
+    assign RegWrite=MEMWB_RegWrite;
+    assign RegWriteSrc=MEMWB_RegWriteSrc;//RegWriteSrc=1:pc+4
+
+    assign MDR=MEMWB_MDR;
+
+    control ctrl_u0(
+        .IR(IR),
+        .Branch(src_Branch),
+        .MemRead(src_MemRead),
+        .MemtoReg(src_MemtoReg),
+        .MemWrite(src_MemWrite),
+        .ALUSrc(src_ALUSrc),
+        .RegWrite(src_RegWrite),
+        .is_jalr(src_is_jalr),
+        .RegWriteSrc(src_RegWriteSrc),
+        .is_jump(src_is_jump),
+        .ALUf(src_ALUf),//[2:0]
+        .ALUSrc_a(src_ALUSrc_a)//00:reg  01:0  10:pc  //[1:0]
+    );//*done
+
+//===== rf
+    wire [31:0] src_temp_a,src_temp_b;
+    reg [31:0] reg_wdata;
+
+    always@(*) begin 
+        if(RegWriteSrc)
+            reg_wdata=MEMWB_pc+4;//jal, jalr
+        else if(MemtoReg)
+            reg_wdata=MDR;
+        else
+            reg_wdata=MEMWB_Y;
+    end
+    //rs1, rs2, rd, RegWrite, reg_wdata, src_temp_a, src_temp_b
+    rf rf_u0(
+        .rs1(IR[19:15]),
+        .rs2(IR[24:20]),
+        .rs_debug(addr[4:0]),
+        .rd(MEMWB_rd),
+        .wdata(reg_wdata),
+        .clk(clk),
+        .we(RegWrite),
+        .a(src_temp_a),
+        .b(src_temp_b),
+        .debug_rf(dout_rf)
+    );
+
+    wire [31:0] src_IMM;
+    immgen immgen_u0(
+        .inst(IR),
+        .out(src_IMM)
+    ); //*done
+//========== stage3
+    wire Branch,is_jalr,is_jump;
+    assign Branch=IDEX_Branch;
+    assign is_jalr=IDEX_is_jalr;
+    assign is_jump=IDEX_is_jump;
+
+    wire [1:0] ALUSrc_a;//00:reg  01:0  10:pc 
+    wire [2:0] ALUf; 
+    wire ALUSrc;
+    assign ALUSrc_a=IDEX_ALUSrc_a;
+    assign ALUf=IDEX_ALUf;
+    assign ALUSrc=IDEX_ALUSrc;
+
+    reg [31:0] temp_a,temp_b;
+    always@(*) begin
+        case(afwd) 
+            2'b00:temp_a=IDEX_temp_a;
+            2'b01:temp_a=reg_wdata;
+            2'b10:temp_a=EXMEM_Y;
+            default:temp_a=IDEX_temp_a;
+        endcase
+    end
+    always@(*) begin
+        case(bfwd) 
+            2'b00:temp_b=IDEX_temp_b;
+            2'b01:temp_b=reg_wdata;
+            2'b10:temp_b=EXMEM_Y;
+            default:temp_b=IDEX_temp_b;
+        endcase
+    end
+    assign IMM=IDEX_IMM;
+
+    wire [2:0] ALUt;
+    wire condition;
+    condition condition_u0(
+        .funct3(IDEX_funct3),
+        .ALUt(ALUt), 
+        .condition(condition)
+    );
+//===== ALU
+    always @(*) begin
+        case(ALUSrc_a)
+            2'b00:A=temp_a;
+            2'b01:A=0;
+            2'b10:A=IDEX_pc;
+            default:A=temp_a;
+        endcase
+    end
+    assign B=(ALUSrc)?IMM:temp_b;
+
+    wire [31:0] src_Y;
+    alu alu_u0(
+        .a(A), 
+        .b(B),       //两操作数
+        .f(ALUf),                      //功能选择
+        .y(src_Y),     //运算结果
+        .t(ALUt)                     //比较标志
+    );
+
+
+//========== stage4
+//===== mem
+    wire MemRead,MemWrite;
+    assign MemRead=EXMEM_MemRead;
+    assign MemWrite=EXMEM_MemWrite;
+
+    assign Y=EXMEM_Y;
+    
+    reg [31:0] src_MDR;
+    //EXMEM_wdata is temp_b;
+
+    //addr>>2
+    //base addr=0x2000
+    wire [31:0] temp_mdr;
+    dist_mem_gen_data dr(
+        .a(debug?addr[9:0]:Y[11:2]),        // input wire [9 : 0] a
+        .d(debug?din:EXMEM_wdata),        // input wire [31 : 0] d
+        .dpra(addr[9:0]),  // input wire [9 : 0] dpra
+        .clk(mem_clk),    // input wire clk
+        .we(debug?we_dm:((Y>=32'h3000)?1'h0:MemWrite)),      // input wire we
+        .spo(temp_mdr),    // output wire [31 : 0] spo
+        .dpo(dout_dm)    // output wire [31 : 0] dpo
+    );
+
+
+//===== mmio
+    always@(*) begin
+        if(Y==32'h3f00)
+            src_MDR=led;
+        else if(Y==32'h3f20)//pc_chk,read_only
+            src_MDR=pc_chk;
+        else
+            src_MDR=temp_mdr;
+    end
+
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            led<=0;
+        else begin
+            if(Y==32'h3f00&&MemWrite)//debug 到不了这个地址，可以不考虑
+                led<=EXMEM_wdata;
+        end
+            
+    end
+
+
+
+
+
+
+
+
+
+
+endmodule
