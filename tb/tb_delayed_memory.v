@@ -3,9 +3,10 @@ module tb_delayed_memory();
     parameter ADDR_WIDTH = 3;
     parameter BLOCK_OFFSET_WIDTH = 2;
 
+    parameter BLOCK_SIZE = 1<<BLOCK_OFFSET_WIDTH;
 
     wire valid;
-    wire [DATA_WIDTH-1:0] dout;
+    wire [BLOCK_SIZE*DATA_WIDTH-1:0] block_dout;
 
     parameter PERIOD = 10;
 
@@ -52,7 +53,7 @@ module tb_delayed_memory();
         .block_din(block_din),
         .valid(valid),
         .we(we),
-        .dout(dout)
+        .block_dout(block_dout)
     );
 
 

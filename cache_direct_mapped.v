@@ -44,15 +44,8 @@ module cache_direct_mapped#(
             cache[index][(block_offset*DATA_WIDTH)+:DATA_WIDTH]<=din;
         end
         else if(!hit) begin
-            
-        end
-    end
-
-    reg [DATA_WIDTH*BLOCK_SIZE-1:0] read_data_buffer;
-    always@(posedge clk) begin
-        if(!hit) begin
             if(valid_bram) begin
-                read_data_buffer<={dout_bram,read_data_buffer[DATA_WIDTH*BLOCK_SIZE-1:DATA_WIDTH]};
+                cache[index]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
             end
         end
     end
@@ -60,6 +53,7 @@ module cache_direct_mapped#(
 
     wire valid_bram; // Valid/Ready
     wire [BLOCK_OFFSET_WIDTH-1:0] block_offset_zero;//用于给出宽为BLOCK_OFFSET_WIDTH的0
+    wire [BLOCK_SIZE*DATA_WIDTH-1:0] dout_bram;
     delayed_memory #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH),
@@ -68,11 +62,11 @@ module cache_direct_mapped#(
     ) delayed_memory_u0(
         .clk(clk),
         .rstn(rstn),
-        .addr({addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero}),//只有地址变化才会触发读写
+        .addr({addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero}),
         .block_din(line_data),
         .valid(valid_bram),
         .we(!hit),//未命中则需要写入当前行
-        .dout(dout_bram)
+        .block_dout(dout_bram)
     );
 
 

@@ -131,7 +131,7 @@ module delayed_memory#(
         endcase
     end
     //addr_bram, dout_valid
-    wire dout_valid;
+    reg dout_valid;
     always@(posedge clk) begin
         case(CS) 
             VALID:begin
