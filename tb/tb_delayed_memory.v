@@ -2,7 +2,6 @@ module tb_delayed_memory();
     parameter DATA_WIDTH = 32;
     parameter ADDR_WIDTH = 3;
     parameter BLOCK_OFFSET_WIDTH = 2;
-    parameter BLOCK_SIZE = 4;
 
 
     wire valid;
@@ -45,7 +44,6 @@ module tb_delayed_memory();
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH),
         .BLOCK_OFFSET_WIDTH(BLOCK_OFFSET_WIDTH),
-        .BLOCK_SIZE(BLOCK_SIZE),
         .INIT_FILE("D:\\Verilog\\2023_cod_lab\\lab_6\\labH6_resources\\coe\\array_sort_data_v3 hex.txt")
     ) delayed_memory_u0(
         .clk(clk),

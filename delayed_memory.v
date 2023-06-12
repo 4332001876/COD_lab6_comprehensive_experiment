@@ -2,7 +2,6 @@ module delayed_memory#(
     parameter DATA_WIDTH = 32,
     ADDR_WIDTH = 10,
     BLOCK_OFFSET_WIDTH = 3,
-    BLOCK_SIZE = 8,
     INIT_FILE = ""
 )(
     input clk, // Clock
@@ -17,6 +16,8 @@ module delayed_memory#(
     //写同样需要地址稳定这么长时间，且保证写入块数据稳定不变
     //读写都在READING状态进行
     //靠valid/ready信号发送数据
+
+    parameter BLOCK_SIZE = 1<<BLOCK_OFFSET_WIDTH;
 
     reg [ADDR_WIDTH-1:0] last_addr; // Last Address
 
