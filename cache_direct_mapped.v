@@ -7,7 +7,7 @@ module cache_direct_mapped#(
 )(
     input clk, // Clock
     input rstn,
-    input [ADDR_WIDTH-1:0] addr, // Address
+    input [ADDR_WIDTH-1:0] addr, // Address，要保证Miss后读写BRAM时长时间稳定
     input [DATA_WIDTH-1:0] din, // Data Input
     input we, // Write Enable
     output hit,
@@ -35,12 +35,49 @@ module cache_direct_mapped#(
     assign line_valid=cache_line[TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE];
     assign line_tag=cache_line[TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE-1:DATA_WIDTH*BLOCK_SIZE];
     assign line_data=cache_line[DATA_WIDTH*BLOCK_SIZE-1:0];
+    assign dout=line_data[(block_offset*DATA_WIDTH)+:DATA_WIDTH];
 
     assign hit=line_valid&(line_tag==tag);
 
+    always@(posedge clk) begin
+        if(hit&we) begin
+            cache[index][(block_offset*DATA_WIDTH)+:DATA_WIDTH]<=din;
+        end
+        else if(!hit) begin
+            
+        end
+    end
+
+    reg [DATA_WIDTH*BLOCK_SIZE-1:0] read_data_buffer;
+    always@(posedge clk) begin
+        if(!hit) begin
+            if(valid_bram) begin
+                read_data_buffer<={dout_bram,read_data_buffer[DATA_WIDTH*BLOCK_SIZE-1:DATA_WIDTH]};
+            end
+        end
+    end
 
 
-    wire valid; // Valid/Ready
+    wire valid_bram; // Valid/Ready
+    wire [BLOCK_OFFSET_WIDTH-1:0] block_offset_zero;//用于给出宽为BLOCK_OFFSET_WIDTH的0
+    delayed_memory #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .ADDR_WIDTH(ADDR_WIDTH),
+        .BLOCK_OFFSET_WIDTH(BLOCK_OFFSET_WIDTH),
+        .INIT_FILE("D:\\Verilog\\2023_cod_lab\\lab_6\\labH6_resources\\coe\\array_sort_data_v3 hex.txt")
+    ) delayed_memory_u0(
+        .clk(clk),
+        .rstn(rstn),
+        .addr({addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero}),//只有地址变化才会触发读写
+        .block_din(line_data),
+        .valid(valid_bram),
+        .we(!hit),//未命中则需要写入当前行
+        .dout(dout_bram)
+    );
+
+
+
+    
 
 
 
