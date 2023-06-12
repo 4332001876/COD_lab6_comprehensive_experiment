@@ -24,19 +24,21 @@ module tb_delayed_memory();
     end
     initial begin
         addr=0;
-        block_din=1122334455667788;
+        block_din=128'h11112222333344441122334455667788;
         #(PERIOD*30)  
-        addr=1;
+        addr=5;
         we=1;
         #(PERIOD*60) 
-        addr=2; 
+        addr=6; 
         we=0;
+        #(PERIOD*90)
+        addr=0;
     end
 
     
 
-    reg [ADDR_WIDTH-1:0] addr, // Address
-    reg [BLOCK_SIZE*DATA_WIDTH-1:0] block_din, // Data Input，从低位到高位排下地址低位到高位的字
+    reg [ADDR_WIDTH-1:0] addr; // Address
+    reg [BLOCK_SIZE*DATA_WIDTH-1:0] block_din; // Data Input，从低位到高位排下地址低位到高位的字
 
 
     delayed_memory #(
@@ -44,7 +46,7 @@ module tb_delayed_memory();
         .ADDR_WIDTH(ADDR_WIDTH),
         .BLOCK_OFFSET_WIDTH(BLOCK_OFFSET_WIDTH),
         .BLOCK_SIZE(BLOCK_SIZE),
-        .INIT_FILE("D:\\Verilog\\2023_cod_lab\\lab_6\\labH6_resources\\coe\\array_sort_data_v3.coe")
+        .INIT_FILE("D:\\Verilog\\2023_cod_lab\\lab_6\\labH6_resources\\coe\\array_sort_data_v3 hex.txt")
     ) delayed_memory_u0(
         .clk(clk),
         .rstn(rstn),

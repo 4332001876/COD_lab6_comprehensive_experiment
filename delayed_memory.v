@@ -88,7 +88,7 @@ module delayed_memory#(
     end
 
     //block_buffer
-    input [BLOCK_SIZE*DATA_WIDTH-1:0] block_buffer;//仅用来实现移位操作
+    reg [BLOCK_SIZE*DATA_WIDTH-1:0] block_buffer;//仅用来实现移位操作
     always@(posedge clk) begin
         case(CS) 
             IDLE:begin
