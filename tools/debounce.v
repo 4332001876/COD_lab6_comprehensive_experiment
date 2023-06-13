@@ -1,15 +1,17 @@
 module debounce #(
-parameter TIME_LENGTH = 1000000//t=10ms
+parameter TIME_LENGTH = 1000000,//t=10ms
+WIDTH = 1
 ) (
-    input clk, rstn, x, 
-    output reg y
+    input clk, rstn,
+    input [WIDTH-1:0] x, 
+    output reg [WIDTH-1:0] y
 );
 
     reg pe,ce;
     wire [19:0] counter_output;
-    reg last_signal;
+    reg [WIDTH-1:0] last_signal;
 
-    wire is_change;
+    wire [WIDTH-1:0] is_change;
     assign is_change=last_signal^x;
 
     counter #(.WIDTH(20),.RST_VLU(TIME_LENGTH)) counter_u0

@@ -1,8 +1,11 @@
-module ps(
-    input rstn,clk,x,
-    output y
+module ps #(
+    parameter WIDTH = 1
+) (
+    input rstn,clk,
+    input [WIDTH-1:0] x,
+    output [WIDTH-1:0] y
 );//两级同步再取上升沿
-    reg r1,r2,r3;
+    reg [WIDTH-1:0] r1,r2,r3;
     always@(posedge clk)
     begin
         r1<=x;
