@@ -10,6 +10,7 @@ module cache_direct_mapped#(
     input [ADDR_WIDTH-1:0] addr, // Address，要保证Miss后读写BRAM时长时间稳定
     input [DATA_WIDTH-1:0] din, // Data Input
     input we, // Write Enable
+    input mem_en, // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
     output hit,
     output [DATA_WIDTH-1:0] dout // Data Output
 );
@@ -39,11 +40,12 @@ module cache_direct_mapped#(
 
     assign hit=line_valid&(line_tag==tag);
 
+    //cache的主要活动
     always@(posedge clk) begin
-        if(hit&we) begin
+        if(mem_en&hit&we) begin//写缓存
             cache[index][(block_offset*DATA_WIDTH)+:DATA_WIDTH]<=din;
         end
-        else if(!hit) begin
+        else if(mem_en&!hit) begin//换页
             if(valid_bram) begin
                 cache[index]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
             end
@@ -64,9 +66,13 @@ module cache_direct_mapped#(
         .rstn(rstn),
         .addr({addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero}),
         .block_din(line_data),
-        .valid(valid_bram),
+        .dout_valid(),
+        .dout(),
+        .block_valid(valid_bram),
         .we(!hit),//未命中则需要写入当前行
         .block_dout(dout_bram)
+        .debug_addr(debug_addr),
+        .debug_dout(debug_dout)
     );
 
 

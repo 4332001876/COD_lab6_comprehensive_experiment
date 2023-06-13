@@ -6,14 +6,32 @@ module hazard_detection(
     input Branch,
     input is_jump,
     input condition,
+    input cache_miss,//(!hit)&mem_en
     output reg control_flush,//清空控制信号
     output reg instrution_flush,//清空指令，优先级大于IFID_we
     output reg pc_we,
-    output reg IFID_we
+    output reg IFID_we,
+    //以下三个仅用于缓存未命中的情况
+    output reg IDEX_we,
+    output reg EXMEM_we,
+    output reg MEMWB_control_flush
 );
     always@(*) begin 
         //其实可以把第一个if内内容看作是不修改后续执行指令的阻塞，而把第二个if内内容看作是修改后续执行指令的阻塞
-        if((IDEX_MemRead&((IDEX_rd==rs1)|(IDEX_rd==rs2)))) begin //load-use hazard
+        IDEX_we=1;
+        EXMEM_we=1;
+        MEMWB_control_flush=0;
+        if(cache_miss) begin //cache未命中，则停下前面的流水线阶段，并清空MEM_WB中的控制信号
+            control_flush=0;
+            pc_we=0;
+            IFID_we=0;
+            instrution_flush=0;
+
+            IDEX_we=0;
+            EXMEM_we=0;
+            MEMWB_control_flush=1;
+        end
+        else if((IDEX_MemRead&((IDEX_rd==rs1)|(IDEX_rd==rs2)))) begin //load-use hazard
             control_flush=1;
             pc_we=0;//保留紧跟着的第二条指令
             IFID_we=0;//保留紧跟着的第一条指令

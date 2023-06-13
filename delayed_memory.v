@@ -8,9 +8,14 @@ module delayed_memory#(
     input rstn,
     input [ADDR_WIDTH-1:0] addr, // Address
     input [BLOCK_SIZE*DATA_WIDTH-1:0] block_din, // Data Input，从低位到高位排下地址低位到高位的字
-    output reg valid, // Valid/Ready
+    output reg block_valid, // Valid/Ready
+    output reg dout_valid,
     input we, // Write Enable
+    output [DATA_WIDTH-1:0] dout, // Data Output
     output reg [BLOCK_SIZE*DATA_WIDTH-1:0] block_dout // Data Output，从低位到高位排下地址低位到高位的字
+    //debug
+    input [ADDR_WIDTH-1:0] debug_addr,
+    output reg [DATA_WIDTH-1:0] debug_dout
 );
     //只有地址变化才会触发读写
     //读需要地址稳定延迟的周期数加上数据块的字数
@@ -131,7 +136,6 @@ module delayed_memory#(
         endcase
     end
     //addr_bram, dout_valid
-    reg dout_valid;
     always@(posedge clk) begin
         case(CS) 
             VALID:begin
@@ -166,16 +170,15 @@ module delayed_memory#(
 
     always@(posedge clk) begin
         if(dout_valid&&CS==VALID) begin//读入数据的最后一回合
-            valid<=1;
+            block_valid<=1;
         end else if(CS!=VALID) begin
-            valid<=0;
+            block_valid<=0;
         end
     end
 
 
 
 
-    wire [DATA_WIDTH-1:0] dout; // Data Output
     bram #( // 1 cycle delay
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH),

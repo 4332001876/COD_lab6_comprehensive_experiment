@@ -68,31 +68,44 @@ module cpu_top #(
             if(IFID_we) begin
                 IFID_pc<=pc;
             end
-            IDEX_pc<=IFID_pc;
-            EXMEM_pc<=IDEX_pc;
+            if(IDEX_we) begin
+                IDEX_pc<=IFID_pc;
+            end
+            if(EXMEM_we) begin
+                EXMEM_pc<=IDEX_pc;
+            end
             MEMWB_pc<=EXMEM_pc;
         end
     end//*done
 
     always@(posedge clk) begin
-        IDEX_temp_a<=src_temp_a;
-        IDEX_temp_b<=src_temp_b;
-        IDEX_IMM<=src_IMM;
-        EXMEM_Y<=src_Y;
-        
+        if(IDEX_we) begin
+            IDEX_temp_a<=src_temp_a;
+            IDEX_temp_b<=src_temp_b;
+            IDEX_IMM<=src_IMM;
+        end
+        if(EXMEM_we) begin
+            EXMEM_Y<=src_Y;
+        end      
     end//*done
 
     always@(posedge clk) begin
-        IDEX_funct3<=IFID_IR[14:12];
-        IDEX_rs1<=IFID_IR[19:15];
-        IDEX_rs2<=IFID_IR[24:20];
-        IDEX_rd<=IFID_IR[11:7];
-        EXMEM_rd<=IDEX_rd;
+        if(IDEX_we) begin
+            IDEX_funct3<=IFID_IR[14:12];
+            IDEX_rs1<=IFID_IR[19:15];
+            IDEX_rs2<=IFID_IR[24:20];
+            IDEX_rd<=IFID_IR[11:7];
+        end
+        if(EXMEM_we) begin
+            EXMEM_rd<=IDEX_rd;
+        end
         MEMWB_rd<=EXMEM_rd;
     end//*done
 
     always@(posedge clk) begin
-        EXMEM_wdata<=temp_b;
+        if(EXMEM_we) begin
+            EXMEM_wdata<=temp_b;
+        end
         MEMWB_Y<=EXMEM_Y;
         MEMWB_MDR<=src_MDR;
     end//*done
@@ -108,7 +121,6 @@ module cpu_top #(
     reg [2:0] IDEX_ALUf; 
     //EXMEM: eliminate is_jalr,is_jump,Branch(for npc)
     reg EXMEM_MemRead,EXMEM_MemtoReg,EXMEM_MemWrite,EXMEM_RegWrite,EXMEM_RegWriteSrc;//RegWriteSrc=1:pc+4
-    reg EXMEM_Branch, EXMEM_is_jump;//for Branch hazard
     //MEMWB: 
     reg MEMWB_MemtoReg,MEMWB_RegWrite,MEMWB_RegWriteSrc;//RegWriteSrc=1:pc+4
 
@@ -171,8 +183,6 @@ module cpu_top #(
             EXMEM_MemWrite<=0;
             EXMEM_RegWrite<=0;
             EXMEM_RegWriteSrc<=0;
-            EXMEM_Branch<=0;
-            EXMEM_is_jump<=0;
         end
         else begin
             EXMEM_MemRead<=IDEX_MemRead;
@@ -180,8 +190,6 @@ module cpu_top #(
             EXMEM_MemWrite<=IDEX_MemWrite;
             EXMEM_RegWrite<=IDEX_RegWrite;
             EXMEM_RegWriteSrc<=IDEX_RegWriteSrc;
-            EXMEM_Branch<=IDEX_Branch;
-            EXMEM_is_jump<=IDEX_is_jump;
         end
     end//*done
 
@@ -192,9 +200,16 @@ module cpu_top #(
             MEMWB_RegWriteSrc<=0;
         end
         else begin
-            MEMWB_MemtoReg<=EXMEM_MemtoReg;
-            MEMWB_RegWrite<=EXMEM_RegWrite;
-            MEMWB_RegWriteSrc<=EXMEM_RegWriteSrc;
+            if(MEMWB_control_flush)begin
+                MEMWB_MemtoReg<=0;
+                MEMWB_RegWrite<=0;
+                MEMWB_RegWriteSrc<=0;
+            end
+            else begin
+                MEMWB_MemtoReg<=EXMEM_MemtoReg;
+                MEMWB_RegWrite<=EXMEM_RegWrite;
+                MEMWB_RegWriteSrc<=EXMEM_RegWriteSrc;
+            end
         end
     end//*done
 
@@ -214,6 +229,7 @@ module cpu_top #(
 
 //========== hazard
     wire control_flush,instrution_flush,pc_we,IFID_we;
+    wire IDEX_we,EXMEM_we,MEMWB_control_flush;//for cache_miss
     hazard_detection hazard_u0(
         .rs1(IR[19:15]),//in IFID
         .rs2(IR[24:20]),//in IFID
@@ -222,10 +238,14 @@ module cpu_top #(
         .Branch(Branch),
         .is_jump(is_jump),
         .condition(condition),
+        .cache_miss((!hit)&mem_en),
         .control_flush(control_flush),
         .instrution_flush(instrution_flush),
         .pc_we(pc_we),
-        .IFID_we(IFID_we)
+        .IFID_we(IFID_we),
+        .IDEX_we(IDEX_we),
+        .EXMEM_we(EXMEM_we),
+        .MEMWB_control_flush(MEMWB_control_flush)
     );
 
 //========== stage1
@@ -412,7 +432,7 @@ module cpu_top #(
     //addr>>2
     //base addr=0x2000
     wire [31:0] temp_mdr;
-    dist_mem_gen_data dr(
+    /*dist_mem_gen_data dr(
         .a(debug?addr[9:0]:Y[11:2]),        // input wire [9 : 0] a
         .d(debug?din:EXMEM_wdata),        // input wire [31 : 0] d
         .dpra(addr[9:0]),  // input wire [9 : 0] dpra
@@ -420,7 +440,31 @@ module cpu_top #(
         .we(debug?we_dm:((Y>=32'h3000)?1'h0:MemWrite)),      // input wire we
         .spo(temp_mdr),    // output wire [31 : 0] spo
         .dpo(dout_dm)    // output wire [31 : 0] dpo
+    );*/
+    wire hit;
+    wire mem_en;
+    assign mem_en=(Y>=32'h3000)?1'h0:(MemRead|MemWrite);
+    cache_direct_mapped #(
+        .DATA_WIDTH(32),
+        .ADDR_WIDTH(10),
+        .INDEX_WIDTH(5),
+        .TAG_WIDTH(2),
+        .BLOCK_OFFSET_WIDTH(3)
+    ) cache_direct_mapped_u0(
+        .clk(mem_clk), // Clock
+        .rstn(rstn),
+        .addr(debug?addr[9:0]:Y[11:2]), // Address，要保证Miss后读写BRAM时长时间稳定
+        .din(debug?din:EXMEM_wdata), // Data Input
+        .we(debug?we_dm:((Y>=32'h3000)?1'h0:MemWrite)), // Write Enable
+        .mem_en(mem_en), // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
+        .hit(hit),
+        .dout(temp_mdr) // Data Output
+        .debug_addr(addr[9:0]),
+        .debug_dout(dout_dm)
     );
+
+
+
 
 
 //===== mmio
