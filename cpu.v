@@ -74,7 +74,9 @@ module cpu_top #(
             if(EXMEM_we) begin
                 EXMEM_pc<=IDEX_pc;
             end
-            MEMWB_pc<=EXMEM_pc;
+            if(MEMWB_we) begin
+                MEMWB_pc<=EXMEM_pc;
+            end
         end
     end//*done
 
@@ -99,15 +101,19 @@ module cpu_top #(
         if(EXMEM_we) begin
             EXMEM_rd<=IDEX_rd;
         end
-        MEMWB_rd<=EXMEM_rd;
+        if(MEMWB_we) begin
+            MEMWB_rd<=EXMEM_rd;
+        end
     end//*done
 
     always@(posedge clk) begin
         if(EXMEM_we) begin
             EXMEM_wdata<=temp_b;
         end
-        MEMWB_Y<=EXMEM_Y;
-        MEMWB_MDR<=src_MDR;
+        if(MEMWB_we) begin
+            MEMWB_Y<=EXMEM_Y;
+            MEMWB_MDR<=src_MDR;
+        end
     end//*done
 
 
@@ -160,7 +166,7 @@ module cpu_top #(
                 IDEX_is_jump<=0;
 
             end
-            else begin
+            else if(IDEX_we) begin
                 IDEX_MemRead<=src_MemRead;
                 IDEX_MemtoReg<=src_MemtoReg;
                 IDEX_MemWrite<=src_MemWrite;
@@ -184,7 +190,7 @@ module cpu_top #(
             EXMEM_RegWrite<=0;
             EXMEM_RegWriteSrc<=0;
         end
-        else begin
+        else if(EXMEM_we) begin
             EXMEM_MemRead<=IDEX_MemRead;
             EXMEM_MemtoReg<=IDEX_MemtoReg;
             EXMEM_MemWrite<=IDEX_MemWrite;
@@ -200,12 +206,7 @@ module cpu_top #(
             MEMWB_RegWriteSrc<=0;
         end
         else begin
-            if(MEMWB_control_flush)begin
-                MEMWB_MemtoReg<=0;
-                MEMWB_RegWrite<=0;
-                MEMWB_RegWriteSrc<=0;
-            end
-            else begin
+            if(MEMWB_we) begin
                 MEMWB_MemtoReg<=EXMEM_MemtoReg;
                 MEMWB_RegWrite<=EXMEM_RegWrite;
                 MEMWB_RegWriteSrc<=EXMEM_RegWriteSrc;
@@ -229,7 +230,7 @@ module cpu_top #(
 
 //========== hazard
     wire control_flush,instrution_flush,pc_we,IFID_we;
-    wire IDEX_we,EXMEM_we,MEMWB_control_flush;//for cache_miss
+    wire IDEX_we,EXMEM_we,MEMWB_we;//for cache_miss
     hazard_detection hazard_u0(
         .rs1(IR[19:15]),//in IFID
         .rs2(IR[24:20]),//in IFID
@@ -245,7 +246,7 @@ module cpu_top #(
         .IFID_we(IFID_we),
         .IDEX_we(IDEX_we),
         .EXMEM_we(EXMEM_we),
-        .MEMWB_control_flush(MEMWB_control_flush)
+        .MEMWB_we(MEMWB_we)
     );
 
 //========== stage1
@@ -458,7 +459,7 @@ module cpu_top #(
         .we(debug?we_dm:((Y>=32'h3000)?1'h0:MemWrite)), // Write Enable
         .mem_en(mem_en), // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
         .hit(hit),
-        .dout(temp_mdr) // Data Output
+        .dout(temp_mdr), // Data Output
         .debug_addr(addr[9:0]),
         .debug_dout(dout_dm)
     );

@@ -2,20 +2,20 @@ module delayed_memory#(
     parameter DATA_WIDTH = 32,
     ADDR_WIDTH = 10,
     BLOCK_OFFSET_WIDTH = 3,
-    INIT_FILE = ""
+    INIT_FILE = "D:/Verilog/2023_cod_lab/lab_6/labH6_resources/coe/array_sort_data_v3_hex.txt"
 )(
     input clk, // Clock
     input rstn,
     input [ADDR_WIDTH-1:0] addr, // Address
     input [BLOCK_SIZE*DATA_WIDTH-1:0] block_din, // Data Input，从低位到高位排下地址低位到高位的字
-    output reg block_valid, // Valid/Ready
+    output block_valid, // Valid/Ready
     output reg dout_valid,
     input we, // Write Enable
     output [DATA_WIDTH-1:0] dout, // Data Output
-    output reg [BLOCK_SIZE*DATA_WIDTH-1:0] block_dout // Data Output，从低位到高位排下地址低位到高位的字
+    output reg [BLOCK_SIZE*DATA_WIDTH-1:0] block_dout, // Data Output，从低位到高位排下地址低位到高位的字
     //debug
     input [ADDR_WIDTH-1:0] debug_addr,
-    output reg [DATA_WIDTH-1:0] debug_dout
+    output [DATA_WIDTH-1:0] debug_dout
 );
     //只有地址变化才会触发读写
     //读需要地址稳定延迟的周期数加上数据块的字数
@@ -168,13 +168,16 @@ module delayed_memory#(
         end
     end
 
+    reg temp_block_valid;//由于地址变化不在时钟边沿，故valid信号需要在时钟边沿外变化，但valid信号用时序逻辑较好实现，所以需要一个临时变量
     always@(posedge clk) begin
         if(dout_valid&&CS==VALID) begin//读入数据的最后一回合
-            block_valid<=1;
-        end else if(CS!=VALID) begin
-            block_valid<=0;
+            temp_block_valid<=1;
+        end 
+        else if(NS!=VALID) begin//下一回合都不是VALID状态了，自然valid信号也不应该为1
+            temp_block_valid<=0;
         end
     end
+    assign block_valid=temp_block_valid&(NS==VALID);
 
 
 
@@ -189,7 +192,9 @@ module delayed_memory#(
         .addr(addr_bram), // Address
         .din(din_bram), // Data Input
         .we(we_bram), // Write Enable
-        .dout(dout) // Data Output
+        .dout(dout), // Data Output
+        .debug_addr(debug_addr), // Debug Address
+        .debug_dout(debug_dout) // Debug Data Input
     );
 
 

@@ -12,7 +12,10 @@ module cache_direct_mapped#(
     input we, // Write Enable
     input mem_en, // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
     output hit,
-    output [DATA_WIDTH-1:0] dout // Data Output
+    output [DATA_WIDTH-1:0] dout, // Data Output
+    //debug
+    input [ADDR_WIDTH-1:0] debug_addr,
+    output [DATA_WIDTH-1:0] debug_dout
 );
     //容量1KB，256个字
     parameter BLOCK_SIZE = 1<<BLOCK_OFFSET_WIDTH;
@@ -25,7 +28,21 @@ module cache_direct_mapped#(
     assign index=addr[BLOCK_OFFSET_WIDTH+INDEX_WIDTH-1:BLOCK_OFFSET_WIDTH];
     assign block_offset=addr[BLOCK_OFFSET_WIDTH-1:0];
 
+    wire [TAG_WIDTH-1:0] debug_tag;
+    wire [INDEX_WIDTH-1:0] debug_index;
+    wire [BLOCK_OFFSET_WIDTH-1:0] debug_block_offset;
+    assign debug_tag=debug_addr[ADDR_WIDTH-1:ADDR_WIDTH-TAG_WIDTH];
+    assign debug_index=debug_addr[BLOCK_OFFSET_WIDTH+INDEX_WIDTH-1:BLOCK_OFFSET_WIDTH];
+    assign debug_block_offset=debug_addr[BLOCK_OFFSET_WIDTH-1:0];
+
     reg [(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache [NUM_OF_LINES-1:0]; //cache_content
+
+    integer i;
+    initial begin//cache初始化内容默认为0（其实不加initial块也会默认初始化为0）
+        for(i=0;i<NUM_OF_LINES;i=i+1) begin
+            cache[i]=0;
+        end
+    end
 
     wire [(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache_line;
     assign cache_line=cache[index];
@@ -40,6 +57,13 @@ module cache_direct_mapped#(
 
     assign hit=line_valid&(line_tag==tag);
 
+    wire debug_hit;
+    assign debug_hit=(debug_tag==tag);
+
+    wire [DATA_WIDTH-1:0] debug_dout_bram,debug_dout_cache;
+    assign debug_dout_cache=line_data[(debug_block_offset*DATA_WIDTH)+:DATA_WIDTH];
+    assign debug_dout=debug_hit?debug_dout_cache:debug_dout_bram;
+
     //cache的主要活动
     always@(posedge clk) begin
         if(mem_en&hit&we) begin//写缓存
@@ -53,14 +77,17 @@ module cache_direct_mapped#(
     end
 
 
+
     wire valid_bram; // Valid/Ready
     wire [BLOCK_OFFSET_WIDTH-1:0] block_offset_zero;//用于给出宽为BLOCK_OFFSET_WIDTH的0
+    assign block_offset_zero=0;
     wire [BLOCK_SIZE*DATA_WIDTH-1:0] dout_bram;
     delayed_memory #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH),
         .BLOCK_OFFSET_WIDTH(BLOCK_OFFSET_WIDTH),
-        .INIT_FILE("D:\\Verilog\\2023_cod_lab\\lab_6\\labH6_resources\\coe\\array_sort_data_v3 hex.txt")
+        .INIT_FILE("D:/Verilog/2023_cod_lab/lab_6/labH6_resources/coe/array_sort_data_v3_hex.txt")
+        //"D:/Verilog/2023_cod_lab/lab_6/labH6_resources/coe/array_sort_data_v3_hex.txt"
     ) delayed_memory_u0(
         .clk(clk),
         .rstn(rstn),
@@ -70,9 +97,9 @@ module cache_direct_mapped#(
         .dout(),
         .block_valid(valid_bram),
         .we(!hit),//未命中则需要写入当前行
-        .block_dout(dout_bram)
+        .block_dout(dout_bram),
         .debug_addr(debug_addr),
-        .debug_dout(debug_dout)
+        .debug_dout(debug_dout_bram)
     );
 
 

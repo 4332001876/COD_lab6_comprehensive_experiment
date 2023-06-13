@@ -14,14 +14,14 @@ module hazard_detection(
     //以下三个仅用于缓存未命中的情况
     output reg IDEX_we,
     output reg EXMEM_we,
-    output reg MEMWB_control_flush
+    output reg MEMWB_we
 );
     always@(*) begin 
         //其实可以把第一个if内内容看作是不修改后续执行指令的阻塞，而把第二个if内内容看作是修改后续执行指令的阻塞
         IDEX_we=1;
         EXMEM_we=1;
-        MEMWB_control_flush=0;
-        if(cache_miss) begin //cache未命中，则停下前面的流水线阶段，并清空MEM_WB中的控制信号
+        MEMWB_we=1;
+        if(cache_miss) begin //cache未命中，则停下所有的流水线阶段
             control_flush=0;
             pc_we=0;
             IFID_we=0;
@@ -29,7 +29,7 @@ module hazard_detection(
 
             IDEX_we=0;
             EXMEM_we=0;
-            MEMWB_control_flush=1;
+            MEMWB_we=0;
         end
         else if((IDEX_MemRead&((IDEX_rd==rs1)|(IDEX_rd==rs2)))) begin //load-use hazard
             control_flush=1;
