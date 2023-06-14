@@ -468,6 +468,7 @@ module cpu_top #(
         .debug_addr(addr[9:0]),
         .debug_dout(dout_dm)
     );
+    //assign dout_dm=temp_mdr;
 
 
 
