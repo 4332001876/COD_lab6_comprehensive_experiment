@@ -72,7 +72,8 @@ module cache_direct_mapped#(
         debug_dout_cache<=debug_line_data[(debug_block_offset*DATA_WIDTH)+:DATA_WIDTH];
         debug_hit<=debug_line_valid&(debug_line_tag==debug_tag);
     end
-    assign debug_dout=debug_hit?debug_dout_cache:debug_dout_bram;
+    assign debug_dout=debug_addr;
+    //debug_hit?debug_dout_cache:debug_dout_bram;
 
     //cache的主要活动
     always@(posedge clk) begin
@@ -104,6 +105,7 @@ module cache_direct_mapped#(
                 is_write_back<=0;
         end
     end
+
     reg [ADDR_WIDTH-1:0] addr_bram;
     always@(*) begin
         if(is_write_back)

@@ -22,8 +22,14 @@ module tb_cpu();
         #(PERIOD*1)  rstn=1;
     end
 
+    reg [9:0] addr=0;
+    
+    initial
+    begin
+        forever #(PERIOD*1)  addr=addr+1;
+    end
 
-
+    
 
 
 
@@ -41,7 +47,7 @@ module tb_cpu();
         .B(),      //ALU的输入B
         .Y(),      //ALU的输出
         .MDR(),    //数据存储器的输出
-        .addr(0),   
+        .addr(addr),   
         .dout_rf(),
         .dout_dm(),
         .dout_im(),
@@ -50,7 +56,11 @@ module tb_cpu();
         .we_im(0),
         .clk_ld(0),
         .debug(0),
-        .led()
+        .io_addr(),
+        .io_dout(),
+        .io_din(),
+        .io_we(),
+        .io_rd()
 );
     
 
