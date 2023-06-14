@@ -32,9 +32,14 @@ module IOU#(
     5 0x14 swx_data R 开关输入数据
     6 0x18 cnt_data RW(读写) 计数器数据
     */
-    reg [DATA_WIDTH-1:0] led_data,swt_data,seg_rdy,seg_data,swx_vld;
+    reg [DATA_WIDTH-1:0] led_data,seg_data;
+    reg seg_rdy,swx_vld;
+    wire [DATA_WIDTH-1:0] swt_data;
+    assign swt_data={btnr,btnc,sw};
+
+    reg [31:0] tmp;
     assign led=led_data[15:0];
-    //io_din
+    //io_din，输出内容
     always@(*) begin
         case(io_addr) 
             8'h04: io_din = swt_data;
@@ -45,6 +50,31 @@ module IOU#(
             default: io_din = 0;
         endcase
     end
+    //io_dout，输入内容
+    always@(posedge clk) begin
+        if(io_we) begin
+            case(io_addr) 
+                8'h00: led_data <= io_dout;
+                8'h0c: begin
+                    seg_data <= io_dout; //CPU有义务保证seg_rdy为1时才输出
+                end
+                8'h18: cnt_data <= io_dout;
+                default: io_din = 0;
+            endcase
+        end
+    end
+    //seg_rdy
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            seg_rdy<=1;
+        else begin
+            if(io_we && io_addr==8'h0c)//写入seg_data
+                seg_rdy<=0;
+            else if(p|btnr_p|btnc_p)//sw或者btnr或者btnc按下
+                seg_rdy<=1;
+        end
+    end
+
 
     wire btnc_p,btnr_p;
     dp #(
@@ -121,16 +151,38 @@ module IOU#(
         end
     end
 
+    //tmp
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            tmp<=0;
+        else begin
+            if(p)
+                tmp<={tmp[27:0],h};
+            else if(btnr_p)
+                tmp<={4'h0,tmp[31:4]};
+            else if((!swx_vld)&btnc_p)
+                tmp<=0;
+        end
+    end
 
-        
-
+    //swx_vld
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            swx_vld<=0;
+        else begin
+            if((!swx_vld)&btnc_p)
+                swx_vld<=1;
+            else if(io_rd&swx_vld)//CPU有义务保证swx_vld为1时才读取
+                swx_vld<=0;
+        end
+    end
 
 
 
     dis dis_u0  (
         .clk(clk),
         .rstn(rstn),
-        .d(seg_data),
+        .d(seg_rdy?tmp:seg_data),
         .an(an),
         .cn(cn)
     );
