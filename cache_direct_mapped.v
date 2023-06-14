@@ -44,8 +44,9 @@ module cache_direct_mapped#(
         end
     end
 
-    wire [(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache_line;
+    wire [(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache_line, debug_cache_line;
     assign cache_line=cache[index];
+    assign debug_cache_line=cache[debug_index];
 
     wire line_valid;
     wire [TAG_WIDTH-1:0] line_tag;
@@ -57,12 +58,19 @@ module cache_direct_mapped#(
 
     assign hit=line_valid&(line_tag==tag);
 
+    wire debug_line_valid;
+    wire [TAG_WIDTH-1:0] debug_line_tag;
+    wire [DATA_WIDTH*BLOCK_SIZE-1:0] debug_line_data;
+    assign debug_line_valid=debug_cache_line[TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE];
+    assign debug_line_tag=debug_cache_line[TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE-1:DATA_WIDTH*BLOCK_SIZE];
+    assign debug_line_data=debug_cache_line[DATA_WIDTH*BLOCK_SIZE-1:0];
+
     reg debug_hit;
     wire [DATA_WIDTH-1:0] debug_dout_bram;
-    reg debug_dout_cache;//由于从内存中读出的内容是缓存了一个周期的，所以为了debug时读出的数据延迟的一致性，这里也需要将debug_dout_cache缓存一个周期
+    reg [DATA_WIDTH-1:0] debug_dout_cache;//由于从内存中读出的内容是缓存了一个周期的，所以为了debug时读出的数据延迟的一致性，这里也需要将debug_dout_cache缓存一个周期
     always@(posedge clk) begin
-        debug_dout_cache<=line_data[(debug_block_offset*DATA_WIDTH)+:DATA_WIDTH];
-        debug_hit<=line_valid&(debug_tag==tag);
+        debug_dout_cache<=debug_line_data[(debug_block_offset*DATA_WIDTH)+:DATA_WIDTH];
+        debug_hit<=debug_line_valid&(debug_line_tag==debug_tag);
     end
     assign debug_dout=debug_hit?debug_dout_cache:debug_dout_bram;
 
