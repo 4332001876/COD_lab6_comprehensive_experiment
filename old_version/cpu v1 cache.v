@@ -36,12 +36,7 @@ module cpu_top #(
         input we_im,
         input clk_ld,
         input debug,
-        //io_bus
-        output [7:0] io_addr,//输入，8位，外设地址
-        output [DATA_WIDTH-1:0] io_dout,//输入，也是CPU的输出，32位，输入外设的数据
-        input [DATA_WIDTH-1:0] io_din,//输出，也是CPU的输入，32位，外设输出数据
-        output io_we,//输入，1位，写外设控制信号
-        output io_rd//输入，1位，读外设控制信号
+        output reg [31:0] led
 );
     parameter NOP=32'h0;
 //pipeline register
@@ -474,17 +469,30 @@ module cpu_top #(
 
 
 //===== mmio
-    //Y>=32'h3000为mmio地址，偏移量为低八位
-    assign io_addr=Y[7:0];
-    assign io_dout=debug?din:EXMEM_wdata;
     always@(*) begin
-        if(Y>=32'h3000)
-            src_MDR=io_din;
+        if(Y==32'h3f00)
+            src_MDR=led;
+        else if(Y==32'h3f20)//pc_chk,read_only
+            src_MDR=pc_chk;
         else
             src_MDR=temp_mdr;
     end
-    assign io_rd=(Y>=32'h3000)?MemRead:1'h0;
-    assign io_we=(Y>=32'h3000)?MemWrite:1'h0;
+
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            led<=0;
+        else begin
+            if(Y==32'h3f00&&MemWrite)//debug 到不了这个地址，可以不考虑
+                led<=EXMEM_wdata;
+        end
+            
+    end
+
+
+
+
+
+
 
 
 
