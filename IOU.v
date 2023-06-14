@@ -64,6 +64,15 @@ module IOU#(
             endcase
         end
     end
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn)
+            swx_data<=0;
+        else begin
+            if((!swx_vld)&btnc_p)//写入swx_data
+                swx_data<=tmp;
+        end
+    end
+
     //seg_rdy
     always@(posedge clk, negedge rstn) begin
         if(!rstn)

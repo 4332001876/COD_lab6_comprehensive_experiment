@@ -57,11 +57,13 @@ module cache_direct_mapped#(
 
     assign hit=line_valid&(line_tag==tag);
 
-    wire debug_hit;
-    assign debug_hit=(debug_tag==tag);
-
-    wire [DATA_WIDTH-1:0] debug_dout_bram,debug_dout_cache;
-    assign debug_dout_cache=line_data[(debug_block_offset*DATA_WIDTH)+:DATA_WIDTH];
+    reg debug_hit;
+    wire [DATA_WIDTH-1:0] debug_dout_bram;
+    reg debug_dout_cache;//由于从内存中读出的内容是缓存了一个周期的，所以为了debug时读出的数据延迟的一致性，这里也需要将debug_dout_cache缓存一个周期
+    always@(posedge clk) begin
+        debug_dout_cache<=line_data[(debug_block_offset*DATA_WIDTH)+:DATA_WIDTH];
+        debug_hit<=line_valid&(debug_tag==tag);
+    end
     assign debug_dout=debug_hit?debug_dout_cache:debug_dout_bram;
 
     //cache的主要活动
@@ -69,13 +71,38 @@ module cache_direct_mapped#(
         if(mem_en&hit&we) begin//写缓存
             cache[index][(block_offset*DATA_WIDTH)+:DATA_WIDTH]<=din;
         end
-        else if(mem_en&!hit) begin//换页
-            if(valid_bram) begin
+        else if(mem_en&!hit) begin//换页读
+            if(is_write_back)
+                cache[index]<={1'b0,line_tag,line_data};//设置这个来使is_write_back在写回后变为0
+            else if(valid_bram&(!is_write_back)) begin
                 cache[index]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
             end
         end
     end
 
+    
+    reg is_write_back;//实际上是一个状态信号，控制读或写
+    always@(posedge clk,negedge rstn) begin
+        if(!rstn)
+            is_write_back<=0;
+        else begin
+            if(mem_en&(!hit)) begin//未命中且当前行有效则需要将当前行写内存
+                if(!is_write_back&line_valid)
+                    is_write_back<=1;
+                else if(valid_bram) //（读完的时候写也会完成，因此可以用这时候的valid_bram来判断是否写完）
+                    is_write_back<=0;
+            end
+            else
+                is_write_back<=0;
+        end
+    end
+    reg [ADDR_WIDTH-1:0] addr_bram;
+    always@(*) begin
+        if(is_write_back)
+            addr_bram={line_tag,index,block_offset_zero};
+        else
+            addr_bram={addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero};
+    end
 
 
     wire valid_bram; // Valid/Ready
@@ -91,12 +118,12 @@ module cache_direct_mapped#(
     ) delayed_memory_u0(
         .clk(clk),
         .rstn(rstn),
-        .addr({addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero}),
+        .addr(addr_bram),
         .block_din(line_data),
         .dout_valid(),
         .dout(),
         .block_valid(valid_bram),
-        .we(!hit),//未命中则需要写入当前行
+        .we(mem_en&(!hit)&is_write_back),//未命中且行有效则需要写入当前行
         .block_dout(dout_bram),
         .debug_addr(debug_addr),
         .debug_dout(debug_dout_bram)

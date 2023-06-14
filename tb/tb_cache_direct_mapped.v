@@ -38,14 +38,26 @@ module tb_cache_direct_mapped();
         addr=0;
         block_din=128'h11112222333344441122334455667788;
         #(PERIOD/2)
-        #(PERIOD*30)  
+        #(PERIOD*60)  
         addr=5;
         we=1;
         #(PERIOD*60) 
         addr=6; 
         we=0;
-        #(PERIOD*90)
+        #(PERIOD*60)
         addr=0;
+        #(PERIOD*60)  
+        addr=13;
+        we=1;
+        #(PERIOD*60)  
+        addr=6;
+        we=1;
+        #(PERIOD*60)  
+        addr=13;
+        we=0;
+        #(PERIOD*60)  
+        addr=6;
+        we=0;
     end
 
     
