@@ -3,11 +3,12 @@ module IOU#(
 )
 (
     input clk,
+    input clk_cpu,//未使用
     input rstn,
     //io_bus
     input [7:0] io_addr,//输入，8位，外设地址
     input [DATA_WIDTH-1:0] io_dout,//输入，也是CPU的输出，32位，输入外设的数据
-    output [DATA_WIDTH-1:0] io_din,//输出，也是CPU的输入，32位，外设输出数据
+    output reg [DATA_WIDTH-1:0] io_din,//输出，也是CPU的输入，32位，外设输出数据
     input io_we,//输入，1位，写外设控制信号
     input io_rd,//输入，1位，读外设控制信号
     //device
@@ -59,7 +60,7 @@ module IOU#(
                     seg_data <= io_dout; //CPU有义务保证seg_rdy为1时才输出
                 end
                 8'h18: cnt_data <= io_dout;
-                default: io_din = 0;
+                default: ;
             endcase
         end
     end
@@ -79,7 +80,7 @@ module IOU#(
     wire btnc_p,btnr_p;
     dp #(
         .WIDTH(1)
-    )dp_u0(
+    )dp_u1(
         .clk(clk),
         .rstn(rstn),
         .x(btnc),
@@ -87,7 +88,7 @@ module IOU#(
     );
     dp #(
         .WIDTH(1)
-    )dp_u0(
+    )dp_u2(
         .clk(clk),
         .rstn(rstn),
         .x(btnr),
@@ -97,7 +98,7 @@ module IOU#(
     wire [15:0] sw_p;
     dp #(
         .WIDTH(16)
-    )dp_u0(
+    )dp_u3(
         .clk(clk),
         .rstn(rstn),
         .x(sw),
@@ -105,7 +106,7 @@ module IOU#(
     );
     wire p;
     assign p=|sw_p;
-    wire [3:0] h;//sw_number in hex
+    reg [3:0] h;//sw_number in hex
     always@(*) begin
         //对开关输入进行优先编码
         //拆成两段提高效率
@@ -170,10 +171,12 @@ module IOU#(
         if(!rstn)
             swx_vld<=0;
         else begin
-            if((!swx_vld)&btnc_p)
-                swx_vld<=1;
-            else if(io_rd&swx_vld)//CPU有义务保证swx_vld为1时才读取
+            //由于CPU时钟较慢，读取可能持续多个时钟周期，故CPU逻辑在前
+            if(io_rd&io_addr==8'h14)//CPU有义务保证swx_vld为1时才读取
                 swx_vld<=0;
+            else if((!swx_vld)&btnc_p)
+                swx_vld<=1;
+             
         end
     end
 
@@ -186,20 +189,6 @@ module IOU#(
         .an(an),
         .cn(cn)
     );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -38,8 +38,8 @@ module cpu_top #(
         input debug,
         //io_bus
         output [7:0] io_addr,//输入，8位，外设地址
-        output [DATA_WIDTH-1:0] io_dout,//输入，也是CPU的输出，32位，输入外设的数据
-        input [DATA_WIDTH-1:0] io_din,//输出，也是CPU的输入，32位，外设输出数据
+        output [31:0] io_dout,//输入，也是CPU的输出，32位，输入外设的数据
+        input [31:0] io_din,//输出，也是CPU的输入，32位，外设输出数据
         output io_we,//输入，1位，写外设控制信号
         output io_rd//输入，1位，读外设控制信号
 );

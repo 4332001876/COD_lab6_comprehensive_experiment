@@ -3,7 +3,7 @@ module dp #(
 ) (
     input clk, rstn,
     input [WIDTH-1:0] x, 
-    output reg [WIDTH-1:0] y
+    output [WIDTH-1:0] y
 );
     wire [WIDTH-1:0] debounce_y;
     debounce #(

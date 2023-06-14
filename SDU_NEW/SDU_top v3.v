@@ -27,10 +27,10 @@ module SDU_top(
     output txd,
     output [15:0] led,
     output [7:0] an,
-    output [6:0] cn
+    output [6:0] cn,
     input [15:0] sw,
     input btnr,
-    input btnc,
+    input btnc
     //output [31:0] cnt_data,swx_data
     );
     wire clk_cpu;
@@ -68,11 +68,11 @@ module SDU_top(
     wire debug;
 
     //io_bus
-    wire [7:0] io_addr,//输入，8位，外设地址
-    wire [DATA_WIDTH-1:0] io_dout,//输入，也是CPU的输出，32位，输入外设的数据
-    wire [DATA_WIDTH-1:0] io_din,//输出，也是CPU的输入，32位，外设输出数据
-    wire io_we,//输入，1位，写外设控制信号
-    wire io_rd//输入，1位，读外设控制信号
+    wire [7:0] io_addr;//输入，8位，外设地址
+    wire [31:0] io_dout;//输入，也是CPU的输出，32位，输入外设的数据
+    wire [31:0] io_din;//输出，也是CPU的输入，32位，外设输出数据
+    wire io_we;//输入，1位，写外设控制信号
+    wire io_rd;//输入，1位，读外设控制信号
 
     wire [31:0] cnt_data,swx_data;
 
@@ -132,7 +132,8 @@ module SDU_top(
     );
 
     IOU IOU_u0(
-        .clk(clk_cpu),
+        .clk(clk),
+        .clk_cpu(clk_cpu),//未使用
         .rstn(rstn),
         .io_addr(io_addr),
         .io_dout(io_dout),
@@ -147,18 +148,7 @@ module SDU_top(
         .cn(cn),
         .cnt_data(cnt_data),
         .swx_data(swx_data)
-    )
+    );
 
-
-
-    output [15:0] led,
-    input [15:0] sw,
-    input btnr,
-    input btnc,
-    output [7:0] an,
-    output [6:0] cn,
-    output reg [DATA_WIDTH-1:0] cnt_data,swx_data
-
-);
 
 endmodule
