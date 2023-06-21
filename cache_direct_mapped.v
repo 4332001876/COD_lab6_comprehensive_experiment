@@ -87,7 +87,8 @@ module cache_direct_mapped#(
         debug_hit<=hit;
     end
     //assign debug_dout=debug_hit?debug_dout_cache:debug_dout_bram;
-    assign debug_dout=hit?dout:0;
+    //assign debug_dout=hit?dout:0;
+    assign debug_dout=addr_bram;//!only for debug
 
    /* //cache的主要活动
     always@(posedge clk) begin
