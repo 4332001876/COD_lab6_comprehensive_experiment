@@ -26,6 +26,8 @@ module delayed_memory#(
     parameter BLOCK_SIZE = 1<<BLOCK_OFFSET_WIDTH;
 
     reg [ADDR_WIDTH-1:0] last_addr; // Last Address
+    reg last_we;
+    reg [BLOCK_SIZE*DATA_WIDTH-1:0] last_block_din;
 
     reg [ADDR_WIDTH-1:0] addr_bram; // Address Register for BRAM
     reg [DATA_WIDTH-1:0] din_bram;
@@ -33,6 +35,8 @@ module delayed_memory#(
 
     always@(posedge clk) begin
         last_addr<=addr;
+        last_we<=we;
+        last_block_din<=block_din;
     end
 
     reg [2:0] NS,CS;
@@ -45,10 +49,12 @@ module delayed_memory#(
     end
     reg [3:0] waiting_countdown;
     //ns
+    wire reset_waiting;
+    assign reset_waiting=(last_addr!=addr)|(last_we!=we)|(we&(last_block_din!=block_din));
     always@(*) begin
         case(CS) 
             WAITING:begin
-                if(last_addr!=addr) 
+                if(reset_waiting) 
                     NS=WAITING;
                 else if(waiting_countdown==0) begin
                     NS=READING;
@@ -58,7 +64,9 @@ module delayed_memory#(
                 end
             end
             READING:begin
-                if(addr_bram[BLOCK_OFFSET_WIDTH-1:0]==BLOCK_SIZE-1) begin
+                if(reset_waiting)
+                    NS=WAITING;
+                else if(addr_bram[BLOCK_OFFSET_WIDTH-1:0]==BLOCK_SIZE-1) begin
                     NS=VALID;
                 end
                 else begin
@@ -66,7 +74,7 @@ module delayed_memory#(
                 end
             end            
             VALID:begin
-                if(last_addr!=addr) 
+                if(reset_waiting) 
                     NS=WAITING;
                 else NS=VALID;
             end
