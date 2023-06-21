@@ -18,6 +18,9 @@ module IOU#(
     input btnc,
     output [7:0] an,
     output [6:0] cn,
+    input [31:0] mem_req_counter,
+    input [31:0] miss_counter,
+    input [31:0] clk_counter,
     output reg [DATA_WIDTH-1:0] cnt_data,swx_data
 
 );
@@ -32,6 +35,9 @@ module IOU#(
     4 0x10 swx_vld R 开关输入有效
     5 0x14 swx_data R 开关输入数据
     6 0x18 cnt_data RW(读写) 计数器数据
+    7 0x1c mem_req_counter R 内存请求计数器
+    8 0x20 miss_counter R 缓存未命中计数器
+    9 0x24 clk_counter R 时钟周期计数器
     */
     reg [DATA_WIDTH-1:0] led_data,seg_data;
     reg seg_rdy,swx_vld;
@@ -48,6 +54,9 @@ module IOU#(
             8'h10: io_din = swx_vld;
             8'h14: io_din = swx_data;
             8'h18: io_din = cnt_data;
+            8'h1c: io_din = mem_req_counter;
+            8'h20: io_din = miss_counter;
+            8'h24: io_din = clk_counter;
             default: io_din = 0;
         endcase
     end

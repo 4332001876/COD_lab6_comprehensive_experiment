@@ -12,6 +12,7 @@ module cache_direct_mapped#(
     input we, // Write Enable
     input mem_en, // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
     output hit,
+    output miss_sign,
     output [DATA_WIDTH-1:0] dout, // Data Output
     //debug
     input [ADDR_WIDTH-1:0] debug_addr,
@@ -161,7 +162,7 @@ module cache_direct_mapped#(
                 else
                     NS=WRITE_BACK;
             end
-            READ_MEM:begin
+            READ_MEM:begin //read_mem最后一周期hit为1
                 if(hit)
                     NS=WAITING;
                 else
@@ -171,12 +172,14 @@ module cache_direct_mapped#(
         endcase
     end
 
+    assign miss_sign=(CS==WAITING)&(NS!=WAITING);
+
     reg [ADDR_WIDTH-1:0] addr_bram;
     always@(*) begin
         if(CS==WRITE_BACK)
-            addr_bram={line_tag,index,block_offset_zero};
+            addr_bram={line_tag,index,block_offset_zero};//写回时的地址
         else
-            addr_bram={addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero};
+            addr_bram={addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero};//读内存时的地址
     end
 
 

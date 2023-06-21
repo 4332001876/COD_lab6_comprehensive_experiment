@@ -36,6 +36,9 @@ module cpu_top #(
         input we_im,
         input clk_ld,
         input debug,
+        output reg [31:0] mem_req_counter,
+        output reg [31:0] miss_counter,
+        output reg [31:0] clk_counter,
         //io_bus
         output [7:0] io_addr,//输入，8位，外设地址
         output [31:0] io_dout,//输入，也是CPU的输出，32位，输入外设的数据
@@ -254,6 +257,23 @@ module cpu_top #(
         .MEMWB_we(MEMWB_we)
     );
 
+//========== counter
+
+    always@(posedge clk, negedge rstn) begin
+        if(!rstn) begin
+            mem_req_counter<=0;
+            miss_counter<=0;
+            clk_counter<=0;
+        end
+        else begin
+            if(mem_en&hit)//每次访存最后一回合都是hit
+                mem_req_counter<=mem_req_counter+1;
+            if(miss_sign)
+                miss_counter<=miss_counter+1;
+            clk_counter<=clk_counter+1;
+        end
+    end
+
 //========== stage1
 //========== ctrl
     wire [31:0] src_IR;
@@ -448,6 +468,7 @@ module cpu_top #(
         .dpo(dout_dm)    // output wire [31 : 0] dpo
     );*/
     wire hit;
+    wire miss_sign;
     wire mem_en;
     assign mem_en=(Y>=32'h3000)?1'h0:(MemRead|MemWrite);
     cache_direct_mapped #(
@@ -464,6 +485,7 @@ module cpu_top #(
         .we(debug?we_dm:((Y>=32'h3000)?1'h0:MemWrite)), // Write Enable
         .mem_en(mem_en), // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
         .hit(hit),
+        .miss_sign(miss_sign),
         .dout(temp_mdr), // Data Output
         .debug_addr(addr[9:0]),
         .debug_dout(dout_dm)

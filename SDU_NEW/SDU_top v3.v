@@ -98,12 +98,18 @@ module SDU_top(
         .we_im(we_im),
         .clk_ld(clk_ld),
         .debug(debug),
+        .mem_req_counter(mem_req_counter),
+        .miss_counter(miss_counter),
+        .clk_counter(clk_counter),
         .io_addr(io_addr),
         .io_dout(io_dout),
         .io_din(io_din),
         .io_we(io_we),
         .io_rd(io_rd)
     );
+    wire [31:0] mem_req_counter;
+    wire [31:0] miss_counter;
+    wire [31:0] clk_counter;
     SDU SDU_cwyl(
         .clk(clk),
         .rstn(rstn),
@@ -147,7 +153,10 @@ module SDU_top(
         .an(an),
         .cn(cn),
         .cnt_data(cnt_data),
-        .swx_data(swx_data)
+        .swx_data(swx_data),
+        .mem_req_counter(mem_req_counter),
+        .miss_counter(miss_counter),
+        .clk_counter(clk_counter)
     );
 
 
