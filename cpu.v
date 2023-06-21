@@ -494,7 +494,7 @@ module cpu_top #(
     */
     cache_set_associative #(
         .DATA_WIDTH(32),
-        .ADDR_WIDTH(11),
+        .ADDR_WIDTH(10),
         .INDEX_WIDTH(4),
         .TAG_WIDTH(3),
         .BLOCK_OFFSET_WIDTH(3)

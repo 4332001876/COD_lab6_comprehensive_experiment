@@ -31,7 +31,7 @@ module cache_set_associative#(
     assign block_offset=addr[BLOCK_OFFSET_WIDTH-1:0];
 
     reg [2*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache [NUM_OF_LINES-1:0]; //cache_content
-    reg [NUM_OF_LINES-1:0] which_block; //todo:存储LRU换块时的替换位置，将换块0时which_block=0，换块1时which_block=1
+    reg [NUM_OF_LINES-1:0] which_block; //存储LRU换块时的替换位置，将换块0时which_block=0，换块1时which_block=1
 
     integer i;
     initial begin//cache初始化内容默认为0（其实不加initial块也会默认初始化为0）
@@ -46,7 +46,7 @@ module cache_set_associative#(
     wire [(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache_line_0, cache_line_1, cache_line;
     assign cache_line_0=cache[index][(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0];
     assign cache_line_1=cache[index][2*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)];
-    assign cache_line=hit_0?cache_line_0:cache_line_1;
+    //assign cache_line=hit_0?cache_line_0:cache_line_1;
 
     wire line_valid_0;
     wire [TAG_WIDTH-1:0] line_tag_0;
@@ -105,10 +105,15 @@ module cache_set_associative#(
     
     //cache的主要活动
     always@(posedge clk) begin
-        if(mem_en&hit&we) //写缓存
+        if(mem_en&hit&we) //写缓存  Note:只有在hit时才会进此分支
             cache[index][(hit_1*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)+block_offset*DATA_WIDTH)+:DATA_WIDTH]<=din;
-        else if(CS==READ_MEM&valid_bram) //换页读
-            cache[index][(which_block[index]*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE))+:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
+        else if(CS==READ_MEM&valid_bram) begin//换页读，此时hit_0==hit_1==0
+            //cache[index][(which_block[index]*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE))+:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
+            if(which_block[index])
+                cache[index]<={1'b1,tag,dout_bram,cache_line_0};
+            else 
+                cache[index]<={cache_line_1,1'b1,tag,dout_bram};
+        end
     end
 
     reg [2:0] CS,NS;
@@ -152,6 +157,7 @@ module cache_set_associative#(
         if(!rstn)
             which_block<=0;
         else begin
+            //LRU
             if(hit_0)
                 which_block[index]<=1;
             else if(hit_1)
