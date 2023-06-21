@@ -471,13 +471,14 @@ module cpu_top #(
     wire miss_sign;
     wire mem_en;
     assign mem_en=(Y>=32'h3000)?1'h0:(MemRead|MemWrite);
+    /*
     cache_direct_mapped #(
         .DATA_WIDTH(32),
-        .ADDR_WIDTH(10),
-        .INDEX_WIDTH(5),
+        .ADDR_WIDTH(11),
+        .INDEX_WIDTH(6),
         .TAG_WIDTH(2),
         .BLOCK_OFFSET_WIDTH(3)
-    ) cache_direct_mapped_u0(
+    ) cache_u0(
         .clk(mem_clk), // Clock
         .rstn(rstn),
         .addr(debug?addr[9:0]:Y[11:2]), // Address，要保证Miss后读写BRAM时长时间稳定
@@ -490,6 +491,33 @@ module cpu_top #(
         .debug_addr(addr[9:0]),
         .debug_dout(dout_dm)
     );
+    */
+    cache_set_associative #(
+        .DATA_WIDTH(32),
+        .ADDR_WIDTH(11),
+        .INDEX_WIDTH(4),
+        .TAG_WIDTH(3),
+        .BLOCK_OFFSET_WIDTH(3)
+    ) cache_u0(
+        .clk(mem_clk), // Clock
+        .rstn(rstn),
+        .addr(debug?addr[9:0]:Y[11:2]), // Address，要保证Miss后读写BRAM时长时间稳定
+        .din(debug?din:EXMEM_wdata), // Data Input
+        .we(debug?we_dm:((Y>=32'h3000)?1'h0:MemWrite)), // Write Enable
+        .mem_en(mem_en), // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
+        .hit(hit),
+        .miss_sign(miss_sign),
+        .dout(temp_mdr), // Data Output
+        .debug_addr(addr[9:0]),
+        .debug_dout(dout_dm)
+    );
+
+
+
+
+
+
+
     //assign dout_dm=temp_mdr;
 
 

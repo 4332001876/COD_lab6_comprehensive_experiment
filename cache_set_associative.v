@@ -12,7 +12,9 @@ module cache_set_associative#(
     input we, // Write Enable
     input mem_en, // Memory Enable，用于控制是否读写BRAM，从而控制命中/缺失判断与换页
     output hit,
+    output miss_sign,
     output [DATA_WIDTH-1:0] dout, // Data Output
+    //debug
     input [ADDR_WIDTH-1:0] debug_addr,//debug时保证debug_addr和addr相同
     output [DATA_WIDTH-1:0] debug_dout
 );
@@ -29,6 +31,7 @@ module cache_set_associative#(
     assign block_offset=addr[BLOCK_OFFSET_WIDTH-1:0];
 
     reg [2*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache [NUM_OF_LINES-1:0]; //cache_content
+    reg [NUM_OF_LINES-1:0] which_block; //todo:存储LRU换块时的替换位置，将换块0时which_block=0，换块1时which_block=1
 
     integer i;
     initial begin//cache初始化内容默认为0（其实不加initial块也会默认初始化为0）
@@ -37,7 +40,9 @@ module cache_set_associative#(
         end
     end
 
+
     //0表示低位的块，1表示高位的
+    //可将hit_0作为判断命中高位块还是低位块的判据
     wire [(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0] cache_line_0, cache_line_1, cache_line;
     assign cache_line_0=cache[index][(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:0];
     assign cache_line_1=cache[index][2*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)-1:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)];
@@ -59,69 +64,51 @@ module cache_set_associative#(
     assign line_data_1=cache_line_1[DATA_WIDTH*BLOCK_SIZE-1:0];
     assign dout_1=line_data_1[(block_offset*DATA_WIDTH)+:DATA_WIDTH];
 
+
     wire hit_0,hit_1;
     assign hit_0=line_valid_0&(line_tag_0==tag);
     assign hit_1=line_valid_1&(line_tag_1==tag);
     assign hit=hit_0|hit_1;
 
-    assign dout=hit_0?dout_0:dout_1;
+    assign dout=hit_0?dout_0:dout_1;//Note:1.dout只在hit时有效；2.dout在output处定义过了
 
-    wire line_valid;
-    wire [TAG_WIDTH-1:0] line_tag;
-    wire [DATA_WIDTH*BLOCK_SIZE-1:0] line_data;
+    //Note:此三个变量只读！
+    reg line_valid;
+    reg [TAG_WIDTH-1:0] line_tag;
+    reg [DATA_WIDTH*BLOCK_SIZE-1:0] line_data;
 
-    assign line_valid=hit_0?line_valid_0:line_valid_1;
-    assign line_tag=hit_0?line_tag_0:line_tag_1;
-    assign line_data=hit_0?line_data_0:line_data_1;
-
-    //assign hit=line_valid&(line_tag==tag);
-
-
-
-    /*//cache的主要活动
-    always@(posedge clk) begin
-        if(mem_en&hit&we) begin//写缓存
-            cache[index][(hit_1*(block_offset*DATA_WIDTH)+(block_offset*DATA_WIDTH))+:DATA_WIDTH]<=din;
+    always@(*) begin
+        if(hit_0) begin
+            line_valid=line_valid_0;
+            line_tag=line_tag_0;
+            line_data=line_data_0;
         end
-        else if(mem_en&!hit) begin//换页读
-            if(is_write_back)
-                cache[index][(hit_1*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE))+:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)]<={1'b0,line_tag,line_data};//设置这个来使is_write_back在写回后变为0
-            else if(valid_bram&(!is_write_back)) 
-                cache[index][(hit_1*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE))+:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
+        else if(hit_1) begin
+            line_valid=line_valid_1;
+            line_tag=line_tag_1;
+            line_data=line_data_1;
+        end
+        else begin
+            if(which_block[index])begin
+                line_valid=line_valid_1;
+                line_tag=line_tag_1;
+                line_data=line_data_1;
+            end
+            else begin
+                line_valid=line_valid_0;
+                line_tag=line_tag_0;
+                line_data=line_data_0;
+            end
         end
     end
 
     
-    reg is_write_back;//实际上是一个状态信号，控制读或写
-    always@(posedge clk,negedge rstn) begin
-        if(!rstn)
-            is_write_back<=0;
-        else begin
-            if(mem_en&(!hit)) begin//未命中且当前行有效则需要将当前行写内存
-                if(!is_write_back&line_valid)
-                    is_write_back<=1;
-                else if(valid_bram) //（读完的时候写也会完成，因此可以用这时候的valid_bram来判断是否写完）
-                    is_write_back<=0;
-            end
-            else
-                is_write_back<=0;
-        end
-    end
-
-    reg [ADDR_WIDTH-1:0] addr_bram;
-    always@(*) begin
-        if(is_write_back)
-            addr_bram={line_tag,index,block_offset_zero};
-        else
-            addr_bram={addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero};
-    end*/
-
     //cache的主要活动
     always@(posedge clk) begin
         if(mem_en&hit&we) //写缓存
             cache[index][(hit_1*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)+block_offset*DATA_WIDTH)+:DATA_WIDTH]<=din;
         else if(CS==READ_MEM&valid_bram) //换页读
-            cache[index][(hit_1*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE))+:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
+            cache[index][(which_block[index]*(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE))+:(1+TAG_WIDTH+DATA_WIDTH*BLOCK_SIZE)]<={1'b1,tag,dout_bram};//设置完这个后，下回合hit会自动变成1
     end
 
     reg [2:0] CS,NS;
@@ -160,6 +147,19 @@ module cache_set_associative#(
         endcase
     end
 
+    //==================LRU==================
+    always@(posedge clk,negedge rstn) begin
+        if(!rstn)
+            which_block<=0;
+        else begin
+            if(hit_0)
+                which_block[index]<=1;
+            else if(hit_1)
+                which_block[index]<=0; 
+        end
+    end
+
+    //==================debug==================
     //保证debug_addr与addr一致
     reg debug_hit;
     wire [DATA_WIDTH-1:0] debug_dout_bram;
@@ -171,6 +171,17 @@ module cache_set_associative#(
     //assign debug_dout=debug_hit?debug_dout_cache:debug_dout_bram;
     assign debug_dout=hit?dout:0;
 
+    //==================miss_sign==================
+    assign miss_sign=(CS==WAITING)&(NS!=WAITING);
+
+    
+    reg [ADDR_WIDTH-1:0] addr_bram;
+    always@(*) begin
+        if(CS==WRITE_BACK)
+            addr_bram={line_tag,index,block_offset_zero};//写回时的地址
+        else
+            addr_bram={addr[ADDR_WIDTH-1:BLOCK_OFFSET_WIDTH],block_offset_zero};//读内存时的地址
+    end
 
     wire valid_bram; // Valid/Ready
     wire [BLOCK_OFFSET_WIDTH-1:0] block_offset_zero;//用于给出宽为BLOCK_OFFSET_WIDTH的0
