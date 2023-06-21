@@ -91,7 +91,10 @@ module delayed_memory#(
                 waiting_countdown<=15;
             end
             WAITING:begin
-                waiting_countdown<=waiting_countdown-1;
+                if(reset_waiting)
+                    waiting_countdown<=15;
+                else
+                    waiting_countdown<=waiting_countdown-1;
             end
             READING:begin
                 waiting_countdown<=15;
